@@ -25,10 +25,12 @@ Beats (seconds, 60 fps grid):
               hawkbill up, concave edge leading.  Hit at the centre crossing
               (0.117).  0.5 deg camera yaw/roll kick with the cut.
   0.18-0.23   EXIT: off the lower-left edge, hard ease-out off screen.
-  0.23-0.37   LOOP under the frame back to the right, un-rolling to the grip.
-  0.37-0.43   RISE from the bottom-centre, wrist low, ease-out into a small
-              overshoot right of rest (~0.1 stud) at 0.43.
-  0.43-0.65   GLIDE back left, nose-up tilt (common.TILT) with the knife
+  0.23-0.33   LOOP: drop below the bottom-left (still rolled, so the blade
+              stays out of view), then under the frame back to the right,
+              un-rolling to the grip.
+  0.33-0.45   RISE from the bottom-centre, wrist low, ease-out into a small
+              overshoot right of rest (~0.1 stud) at 0.45.
+  0.45-0.65   GLIDE back left, nose-up tilt (common.TILT) with the knife
               swinging up on the ring, one-sided decay into IDLE (flat).
 Markers: Sound swing (0.05), Hit light (0.117).
 """
@@ -62,24 +64,43 @@ def to_scr(p):
 
 def axes_rot(distal, palmar, near=(0.0, 0.0, 0.0)):
     """hand (pitch, yaw, roll) whose fingers point along `distal` and whose
-    palm faces `palmar` (orthogonalised), euler-continuous with `near`."""
+    palm faces `palmar` (orthogonalised); of the two euler solutions (and
+    their 360 deg wraps) the one closest to `near` (keeps keys continuous)."""
     d = Vector(distal).normalized()
     p = Vector(palmar)
     p = (p - d * p.dot(d)).normalized()
-    r = d.cross(p)
-    M = Matrix((r, d, p)).transposed() @ sk.R_NEUTRAL["R"].inverted()
+    M = Matrix((d.cross(p), d, p)).transposed() @ sk.R_NEUTRAL["R"].inverted()
     e = M.to_euler("YXZ")
-    out = [math.degrees(e.x), math.degrees(e.z), -math.degrees(e.y)]
-    for i in range(3):
-        while out[i] - near[i] > 180.0:
-            out[i] -= 360.0
-        while out[i] - near[i] < -180.0:
-            out[i] += 360.0
-    return tuple(out)
+    a = (math.degrees(e.x), math.degrees(e.z), -math.degrees(e.y))
+    best = None
+    for c in (a, (180.0 - a[0], a[1] + 180.0, a[2] + 180.0)):
+        c = [x - 360.0 * round((x - n) / 360.0) for x, n in zip(c, near)]
+        cost = sum(abs(x - n) for x, n in zip(c, near))
+        if best is None or cost < best[0]:
+            best = (cost, tuple(c))
+    return best[1]
 
 
 def _add(*vs):
     return tuple(sum(x) for x in zip(*vs))
+
+
+_HANG = Vector((0.35, 0.45, 0.82)).normalized()      # = skeleton.solve_arm's elbow hang
+_S0 = sk.ARM_REST["R"]["shoulder"] + Vector(I["R_shoulder"])
+EL_FREE = tuple(-x for x in I["R_elbow"])            # d_elbow that cancels IDLE's elbow bias
+
+
+def auto_shoulder(sp, rot, toward=(0.0, 0.0, 0.0)):
+    """d_shoulder (on top of IDLE's) that lets the arm reach screen point `sp`
+    with hand rot `rot` and a straight wrist: the forearm lies along the
+    solver's preferred direction and the upper arm points from that elbow
+    back towards the idle shoulder + `toward` (use with d_elbow = EL_FREE).
+    Big values = torso turn / lunge; check the shoulder stays off screen."""
+    sem = sk.hand_rotation("R", rot)
+    wrist = Vector(scr(*sp)) - (sem @ sk.PART_IN_SEM["R"]) @ sk.V_HAND
+    elbow = wrist - (sem.col[1] * 0.8 + _HANG * 0.2).normalized() * sk.L_LOWER
+    s = elbow + (_S0 + Vector(toward) - elbow).normalized() * sk.L_UPPER
+    return tuple(s - _S0)
 
 
 IDLE_SCR = to_scr(I["R_pos"])
@@ -100,7 +121,7 @@ KEYS = [
     # exit: hard ease-out beyond the lower-left edge
     (14, (-0.08, 0.99, 1.88), (-6.0, 97.0, 160.0), (-2.00, 0.10, -0.10), (-0.30, 0.0, 0.10), (-2.0, 0.0, 0.0)),
     # loop under the frame (blade below the bottom edge), un-rolling into the grip
-    (17, (0.02, 1.50, 1.90), (10.0, 70.0, 105.0), (-1.90, 0.10, -1.00), (-0.10, 0.0, 0.0), (2.0, 0.0, 0.0)),
+    (17, (-0.04, 1.50, 1.90), (2.0, 84.0, 148.0), (-1.90, 0.10, -1.00), (-0.10, 0.0, 0.0), (2.0, 0.0, 0.0)),
     (20, (0.32, 1.48, 2.20), (35.0, 45.0, 98.0), (-1.00, 0.00, -1.20), Z3, (3.0, 0.0, 0.0)),
     # rise from the bottom-centre, wrist low
     (23, (0.50, 1.08, 2.50), (48.0, 33.0, 96.0), (-0.30, -0.05, -0.10), (0.05, 0.0, -0.05), (3.0, 0.0, 0.0)),
