@@ -50,7 +50,7 @@
 ```lua
 local KnifeViewmodel = require(game.ReplicatedStorage.KnifeSystem.KnifeViewmodel)
 
-local knife = KnifeViewmodel.new("Butterfly")   -- или "Karambit"
+local knife = KnifeViewmodel.new("Butterfly")   -- или "Karambit"; скины паков: ("Karambit", "Lava"), ("Butterfly", "Ice")
 knife:Equip()          -- Draw, затем Idle по кругу
 knife:Attack()         -- лёгкий удар (Attack1/Attack2 по очереди), учитывает кулдаун
 knife:HeavyAttack()    -- сильный удар

@@ -191,7 +191,7 @@ def export_material(name, imgs):
     return m
 
 
-def bake_knife(objs, knife, out_dir, size=1024, samples=24, margin_px=8):
+def bake_knife(objs, knife, out_dir, size=1024, samples=24, margin_px=8, prefix=None):
     """Bake every tex_group of a knife.  Returns {group: {map: path}}."""
     os.makedirs(out_dir, exist_ok=True)
     sc = bpy.context.scene
@@ -207,7 +207,7 @@ def bake_knife(objs, knife, out_dir, size=1024, samples=24, margin_px=8):
     result = {}
     for g, gobjs in groups.items():
         _ensure_atlas_uv(gobjs)
-        base = f"{knife.capitalize()}_{g.capitalize()}"
+        base = f"{prefix}_{g.capitalize()}" if prefix else f"{knife.capitalize()}_{g.capitalize()}"
         imgs = {k: _new_image(f"{base}_{k}", size, k != "Color") for k in MAPS}
         _bake(gobjs, "ROUGHNESS", imgs["Roughness"], margin_px)
         _bake(gobjs, "NORMAL", imgs["Normal"], margin_px)
