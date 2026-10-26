@@ -1,0 +1,77 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+<Item class="LocalScript" referent="RBX00000001"><Properties>
+<string name="Name">KnifeClientExample</string>
+<ProtectedString name="Source"><![CDATA[--[[
+	KnifeClientExample (LocalScript -> StarterPlayer.StarterPlayerScripts)
+	Test bindings for the knife viewmodels. Replace with your own weapon
+	system: it only needs KnifeViewmodel.new / Equip / Attack / HeavyAttack /
+	Inspect / Unequip and the Hit signal.
+
+	1 = Butterfly, 2 = Karambit, LMB = attack, RMB = heavy, F = inspect, Q = put away
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+
+local KnifeSystem = ReplicatedStorage:WaitForChild("KnifeSystem")
+local KnifeViewmodel = require(KnifeSystem:WaitForChild("KnifeViewmodel"))
+
+local player = Players.LocalPlayer
+local current = nil
+
+local function equip(name: string)
+	if current then
+		current:Destroy()
+		current = nil
+	end
+	if not player.Character then
+		return
+	end
+	current = KnifeViewmodel.new(name)
+	current.Hit:Connect(function(kind, result)
+		-- hook your damage RemoteEvent here, e.g. DamageRemote:FireServer(kind, result and result.Instance)
+		if result then
+			print(("[Knife] %s hit %s"):format(kind, result.Instance:GetFullName()))
+		end
+	end)
+	current:Equip()
+end
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.One then
+		equip("Butterfly")
+	elseif input.KeyCode == Enum.KeyCode.Two then
+		equip("Karambit")
+	elseif input.KeyCode == Enum.KeyCode.Q then
+		if current then
+			current:Destroy()
+			current = nil
+		end
+	elseif current then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			current:Attack()
+		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+			current:HeavyAttack()
+		elseif input.KeyCode == Enum.KeyCode.F then
+			current:Inspect()
+		end
+	end
+end)
+
+player.CharacterAdded:Connect(function()
+	if current then
+		local name = current.Knife
+		current:Destroy()
+		current = nil
+		task.wait(0.5)
+		equip(name)
+	end
+end)
+]]></ProtectedString>
+</Properties>
+</Item>
+</roblox>

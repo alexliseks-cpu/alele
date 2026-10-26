@@ -1,0 +1,421 @@
+{
+ "animations": {
+  "bf_idle": {
+   "roblox": "Butterfly_Idle",
+   "length": 6.0,
+   "loop": true,
+   "keyframes": 25,
+   "markers": [],
+   "warnings": []
+  },
+  "bf_draw": {
+   "roblox": "Butterfly_Draw",
+   "length": 1.25,
+   "loop": false,
+   "keyframes": 71,
+   "markers": [
+    [
+     0.0,
+     "Sound",
+     "deploy"
+    ],
+    [
+     0.24,
+     "Sound",
+     "flip"
+    ],
+    [
+     0.734166666666649,
+     "Sound",
+     "latch"
+    ],
+    [
+     0.9,
+     "Sound",
+     "catch"
+    ]
+   ],
+   "warnings": []
+  },
+  "bf_inspect": {
+   "roblox": "Butterfly_Inspect",
+   "length": 4.4,
+   "loop": false,
+   "keyframes": 181,
+   "markers": [
+    [
+     0.09,
+     "Sound",
+     "flip"
+    ],
+    [
+     0.4,
+     "Sound",
+     "flip"
+    ],
+    [
+     0.533,
+     "Sound",
+     "catch"
+    ],
+    [
+     0.667,
+     "Sound",
+     "catch"
+    ],
+    [
+     3.3,
+     "Sound",
+     "flip"
+    ],
+    [
+     3.6,
+     "Sound",
+     "latch"
+    ],
+    [
+     3.633,
+     "Sound",
+     "flip"
+    ],
+    [
+     3.733,
+     "Sound",
+     "catch"
+    ]
+   ],
+   "warnings": [
+    "t=0.55s R wrist flex=55 dev=-73"
+   ]
+  },
+  "bf_attack1": {
+   "roblox": "Butterfly_Attack1",
+   "length": 0.6,
+   "loop": false,
+   "keyframes": 36,
+   "markers": [
+    [
+     0.085,
+     "Sound",
+     "swing"
+    ],
+    [
+     0.14,
+     "Hit",
+     "light"
+    ]
+   ],
+   "warnings": []
+  },
+  "bf_attack2": {
+   "roblox": "Butterfly_Attack2",
+   "length": 0.62,
+   "loop": false,
+   "keyframes": 36,
+   "markers": [
+    [
+     0.11,
+     "Sound",
+     "swing"
+    ],
+    [
+     0.16,
+     "Hit",
+     "light"
+    ]
+   ],
+   "warnings": []
+  },
+  "bf_heavy": {
+   "roblox": "Butterfly_Heavy",
+   "length": 1.0,
+   "loop": false,
+   "keyframes": 55,
+   "markers": [
+    [
+     0.31,
+     "Sound",
+     "swing_heavy"
+    ],
+    [
+     0.4,
+     "Hit",
+     "heavy"
+    ]
+   ],
+   "warnings": []
+  },
+  "kr_idle": {
+   "roblox": "Karambit_Idle",
+   "length": 5.0,
+   "loop": true,
+   "keyframes": 19,
+   "markers": [],
+   "warnings": []
+  },
+  "kr_draw": {
+   "roblox": "Karambit_Draw",
+   "length": 1.1833333333333333,
+   "loop": false,
+   "keyframes": 64,
+   "markers": [
+    [
+     0.0,
+     "Sound",
+     "deploy"
+    ],
+    [
+     0.15,
+     "Sound",
+     "spin"
+    ],
+    [
+     0.7166666666666667,
+     "Sound",
+     "catch"
+    ]
+   ],
+   "warnings": []
+  },
+  "kr_inspect": {
+   "roblox": "Karambit_Inspect",
+   "length": 4.6,
+   "loop": false,
+   "keyframes": 141,
+   "markers": [
+    [
+     0.22,
+     "Sound",
+     "spin"
+    ],
+    [
+     0.6,
+     "Sound",
+     "catch"
+    ],
+    [
+     3.56,
+     "Sound",
+     "spin"
+    ],
+    [
+     4.08,
+     "Sound",
+     "catch"
+    ]
+   ],
+   "warnings": []
+  },
+  "kr_attack1": {
+   "roblox": "Karambit_Attack1",
+   "length": 0.65,
+   "loop": false,
+   "keyframes": 39,
+   "markers": [
+    [
+     0.05,
+     "Sound",
+     "swing"
+    ],
+    [
+     0.11666666666666667,
+     "Hit",
+     "light"
+    ]
+   ],
+   "warnings": []
+  },
+  "kr_attack2": {
+   "roblox": "Karambit_Attack2",
+   "length": 0.65,
+   "loop": false,
+   "keyframes": 39,
+   "markers": [
+    [
+     0.05,
+     "Sound",
+     "swing"
+    ],
+    [
+     0.11666666666666667,
+     "Hit",
+     "light"
+    ]
+   ],
+   "warnings": []
+  },
+  "kr_heavy": {
+   "roblox": "Karambit_Heavy",
+   "length": 1.15,
+   "loop": false,
+   "keyframes": 64,
+   "markers": [
+    [
+     0.18333333333333332,
+     "Sound",
+     "swing_heavy"
+    ],
+    [
+     0.3,
+     "Hit",
+     "heavy"
+    ],
+    [
+     0.5833333333333334,
+     "Sound",
+     "spin"
+    ],
+    [
+     0.85,
+     "Sound",
+     "catch"
+    ]
+   ],
+   "warnings": []
+  }
+ },
+ "meshes": {
+  "butterfly": [
+   {
+    "name": "BF_HandleA_Mesh",
+    "bone": "BF_HandleA",
+    "group": "handle",
+    "center": [
+     0.0,
+     0.10343141853809357,
+     0.6738383509218693
+    ],
+    "size": [
+     0.16489000618457794,
+     0.2057628631591797,
+     1.5123234316706657
+    ],
+    "tris": 5852
+   },
+   {
+    "name": "BF_HandleB_Mesh",
+    "bone": "BF_HandleB",
+    "group": "handle",
+    "center": [
+     0.0,
+     -0.032968565821647644,
+     0.6738383509218693
+    ],
+    "size": [
+     0.16489000618457794,
+     0.2057628631591797,
+     1.5123234316706657
+    ],
+    "tris": 5900
+   },
+   {
+    "name": "BF_Blade_Mesh",
+    "bone": "BF_Blade",
+    "group": "blade",
+    "center": [
+     0.0,
+     -0.05156921595335007,
+     -0.5559768490493298
+    ],
+    "size": [
+     0.04092000052332878,
+     0.32685036957263947,
+     1.3115926161408424
+    ],
+    "tris": 2936
+   },
+   {
+    "name": "BF_Latch_Mesh",
+    "bone": "BF_Latch",
+    "group": "handle",
+    "center": [
+     0.0,
+     -0.060500023886561394,
+     1.4652666449546814
+    ],
+    "size": [
+     0.02200000174343586,
+     0.07469585910439491,
+     0.270466685295105
+    ],
+    "tris": 924
+   }
+  ],
+  "karambit": [
+   {
+    "name": "KR_Handle_Mesh",
+    "bone": "KR_Handle",
+    "group": "handle",
+    "center": [
+     0.0,
+     0.05614729970693588,
+     -0.5408798716962337
+    ],
+    "size": [
+     0.14366000890731812,
+     0.4865620881319046,
+     1.294579453766346
+    ],
+    "tris": 7308
+   },
+   {
+    "name": "KR_Handle_Mesh_Blade",
+    "bone": "KR_Handle",
+    "group": "blade",
+    "center": [
+     0.0,
+     -0.11532914638519287,
+     -0.7698657773435116
+    ],
+    "size": [
+     0.04619999974966049,
+     0.8295149803161621,
+     1.7525512650609016
+    ],
+    "tris": 4504
+   },
+   {
+    "name": "KR_Handle_Mesh_Ring",
+    "bone": "KR_Handle",
+    "group": "handle",
+    "center": [
+     0.0,
+     0.0,
+     0.028117164969444275
+    ],
+    "size": [
+     0.0681999996304512,
+     0.3455309569835663,
+     0.40176528692245483
+    ],
+    "tris": 1272
+   }
+  ]
+ },
+ "textures": {
+  "Butterfly_Handle": {
+   "Color": "/home/user/alele/export/textures/Butterfly_Handle_Color.png",
+   "Normal": "/home/user/alele/export/textures/Butterfly_Handle_Normal.png",
+   "Roughness": "/home/user/alele/export/textures/Butterfly_Handle_Roughness.png",
+   "Metalness": "/home/user/alele/export/textures/Butterfly_Handle_Metalness.png"
+  },
+  "Butterfly_Blade": {
+   "Color": "/home/user/alele/export/textures/Butterfly_Blade_Color.png",
+   "Normal": "/home/user/alele/export/textures/Butterfly_Blade_Normal.png",
+   "Roughness": "/home/user/alele/export/textures/Butterfly_Blade_Roughness.png",
+   "Metalness": "/home/user/alele/export/textures/Butterfly_Blade_Metalness.png"
+  },
+  "Karambit_Handle": {
+   "Color": "/home/user/alele/export/textures/Karambit_Handle_Color.png",
+   "Normal": "/home/user/alele/export/textures/Karambit_Handle_Normal.png",
+   "Roughness": "/home/user/alele/export/textures/Karambit_Handle_Roughness.png",
+   "Metalness": "/home/user/alele/export/textures/Karambit_Handle_Metalness.png"
+  },
+  "Karambit_Blade": {
+   "Color": "/home/user/alele/export/textures/Karambit_Blade_Color.png",
+   "Normal": "/home/user/alele/export/textures/Karambit_Blade_Normal.png",
+   "Roughness": "/home/user/alele/export/textures/Karambit_Blade_Roughness.png",
+   "Metalness": "/home/user/alele/export/textures/Karambit_Blade_Metalness.png"
+  }
+ }
+}
