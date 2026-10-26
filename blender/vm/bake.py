@@ -100,8 +100,10 @@ def _set_target(objs, img):
             nt.nodes.active = node
 
 
-def _emit_metal(objs, on):
-    """Temporarily route the Metallic input into an Emission shader."""
+def _emit_input(objs, input_name, on):
+    """Temporarily route a Principled input (Base Color / Metallic) into an
+    Emission shader so EMIT bakes its raw value (DIFFUSE colour bakes black
+    for metals)."""
     for o in objs:
         for m in _materials(o):
             nt = m.node_tree
@@ -114,12 +116,12 @@ def _emit_metal(objs, on):
                 m["__surface_socket"] = link.from_socket.name if link else ""
                 em = nt.nodes.new("ShaderNodeEmission")
                 em.name = "__bake_emit"
-                met = bsdf.inputs["Metallic"]
-                if met.links:
-                    nt.links.new(met.links[0].from_socket, em.inputs["Color"])
+                sock = bsdf.inputs[input_name]
+                if sock.links:
+                    nt.links.new(sock.links[0].from_socket, em.inputs["Color"])
                 else:
-                    v = met.default_value
-                    em.inputs["Color"].default_value = (v, v, v, 1)
+                    v = sock.default_value
+                    em.inputs["Color"].default_value = (v, v, v, 1) if isinstance(v, float) else tuple(v)
                 em.inputs["Strength"].default_value = 1.0
                 nt.links.new(em.outputs[0], out.inputs["Surface"])
             else:
@@ -207,14 +209,14 @@ def bake_knife(objs, knife, out_dir, size=1024, samples=24, margin_px=8):
         _ensure_atlas_uv(gobjs)
         base = f"{knife.capitalize()}_{g.capitalize()}"
         imgs = {k: _new_image(f"{base}_{k}", size, k != "Color") for k in MAPS}
-        _bake(gobjs, "DIFFUSE", imgs["Color"], margin_px)
         _bake(gobjs, "ROUGHNESS", imgs["Roughness"], margin_px)
         _bake(gobjs, "NORMAL", imgs["Normal"], margin_px)
-        _emit_metal(gobjs, True)
-        try:
-            _bake(gobjs, "EMIT", imgs["Metalness"], margin_px)
-        finally:
-            _emit_metal(gobjs, False)
+        for inp, key in (("Base Color", "Color"), ("Metallic", "Metalness")):
+            _emit_input(gobjs, inp, True)
+            try:
+                _bake(gobjs, "EMIT", imgs[key], margin_px)
+            finally:
+                _emit_input(gobjs, inp, False)
         paths = {}
         for k, img in imgs.items():
             p = os.path.join(out_dir, f"{base}_{k}.png")

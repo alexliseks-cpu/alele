@@ -77,12 +77,12 @@ def setup_beauty(res=(960, 540), samples=24):
     except Exception:
         pass
     nt.links.new(sky.outputs["Color"], bg.inputs["Color"])
-    bg.inputs["Strength"].default_value = 0.35
+    bg.inputs["Strength"].default_value = 0.6
     sc.world = world
     sun = bpy.data.objects.get("BeautySun")
     if sun is None:
         ld = bpy.data.lights.new("BeautySun", "SUN")
-        ld.energy = 3.2
+        ld.energy = 2.0
         ld.angle = math.radians(3)
         sun = bpy.data.objects.new("BeautySun", ld)
         sc.collection.objects.link(sun)
@@ -97,8 +97,8 @@ def setup_beauty(res=(960, 540), samples=24):
     fill.location = (-2.5, -1.0, 1.5)
     fill.rotation_euler = (math.radians(70), 0, math.radians(-110))
     # nicer environment materials
-    for name, col, rough in (("ENV_A", (0.55, 0.50, 0.43), 0.8), ("ENV_B", (0.47, 0.43, 0.37), 0.8),
-                             ("ENV_Wall", (0.78, 0.70, 0.58), 0.9)):
+    for name, col, rough in (("ENV_A", (0.30, 0.27, 0.23), 0.8), ("ENV_B", (0.24, 0.22, 0.19), 0.8),
+                             ("ENV_Wall", (0.42, 0.37, 0.30), 0.9)):
         m = bpy.data.materials.get(name)
         if m and m.node_tree:
             b = m.node_tree.nodes.get("Principled BSDF")
