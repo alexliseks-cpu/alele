@@ -52,7 +52,7 @@ def main():
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", lst,
                             "-vf", f"scale=320:-1,drawtext=text='%{{n}}':x=4:y=4:fontsize=18:fontcolor=yellow,tile={cols}x{rows}",
                             "-frames:v", "1", base + "_sheet.png"], check=False)
-            print(f"[{name}] sheet: {base}_sheet.png  (tile n -> t = n*0.1 s)")
+            print(f"[{name}] sheet: {base}_sheet.png  (tile n -> t = n*{step * every / 30:.3f} s)")
         if "--views" in args:
             cam_o = debugcam.look_at_cam("DBG_orbit", (0.6, 1.6, -0.9), (-0.8, 0.45, -0.25), 4.5, lens=28)
             sc.camera = cam_o
