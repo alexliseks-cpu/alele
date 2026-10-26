@@ -1,0 +1,3 @@
+# Blender as a Python module (headless builds). Alternatively run the scripts
+# inside Blender 5.x:  blender -b --python blender/build.py -- [options]
+bpy==5.2.3
