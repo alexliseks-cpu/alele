@@ -42,7 +42,8 @@ def opt(name, default=None):
     return default
 
 
-ROOT = os.path.abspath(opt("--out", os.path.join(HERE, "..")))
+REPO = os.path.abspath(os.path.join(HERE, ".."))
+ROOT = os.path.abspath(opt("--out", REPO))
 EXPORT = os.path.join(ROOT, "export")
 ROBLOX_SRC = os.path.join(ROOT, "roblox", "src", "KnifeSystem")
 PREVIEWS = os.path.join(ROOT, "previews")
@@ -183,14 +184,20 @@ def main():
     knife_meshes = {}
     for knife in ("butterfly", "karambit"):
         knife_meshes[knife] = export_knife_meshes(groups, knife, mesh_dir)
+    idle_grips = {}
+    for n, (act, a) in acts.items():
+        if n.endswith("_idle"):
+            root = spec.KNIFE_BONES[a.kind][0]
+            idle_grips[a.kind] = bakes[n][0][root]
     with open(os.path.join(ROBLOX_SRC, "RigData.lua"), "w") as f:
-        f.write(roblox.rig_data_lua(knife_meshes, tex_info))
+        f.write(roblox.rig_data_lua(knife_meshes, tex_info, idle_grips))
 
     # ---- Roblox package: ReplicatedStorage.KnifeSystem (modules + clips) -------
     pkg = roblox.Rbx()
     pkg.open("Folder", [("string", "Name", "KnifeSystem")])
     for mod in ("RigData", "KnifeConfig", "KnifeAnimator", "KnifeBuilder", "KnifeViewmodel"):
-        with open(os.path.join(ROBLOX_SRC, mod + ".lua")) as f:
+        src_dir = ROBLOX_SRC if mod == "RigData" else os.path.join(REPO, "roblox", "src", "KnifeSystem")
+        with open(os.path.join(src_dir, mod + ".lua")) as f:
             pkg.open("ModuleScript", [("string", "Name", mod), ("source", "Source", f.read())])
             pkg.close()
     write_anim_folders(pkg)
@@ -200,12 +207,12 @@ def main():
     with open(os.path.join(EXPORT, "roblox", "KnifeSystem.rbxmx"), "w") as f:
         f.write(pkg.text())
     client = roblox.Rbx()
-    with open(os.path.join(ROOT, "roblox", "src", "KnifeClientExample.client.lua")) as f:
+    with open(os.path.join(REPO, "roblox", "src", "KnifeClientExample.client.lua")) as f:
         client.open("LocalScript", [("string", "Name", "KnifeClientExample"), ("source", "Source", f.read())])
     client.close()
     with open(os.path.join(EXPORT, "roblox", "KnifeClientExample.rbxmx"), "w") as f:
         f.write(client.text())
-    shutil.copy(os.path.join(ROOT, "roblox", "SetupKnifeViewmodels.lua"), os.path.join(EXPORT, "roblox", "SetupKnifeViewmodels.lua"))
+    shutil.copy(os.path.join(REPO, "roblox", "SetupKnifeViewmodels.lua"), os.path.join(EXPORT, "roblox", "SetupKnifeViewmodels.lua"))
     with open(os.path.join(EXPORT, "build_report.json"), "w") as f:
         json.dump(dict(animations=report, meshes=knife_meshes, textures=tex_info), f, indent=1, default=str)
 

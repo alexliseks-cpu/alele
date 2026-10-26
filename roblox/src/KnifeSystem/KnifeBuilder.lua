@@ -305,4 +305,29 @@ function KnifeBuilder.BuildViewmodel(knife: string, knifeTemplate: Model, charac
 	return vm
 end
 
+--[[ Third-person / world model: the knife (open) welded to a character's
+	RightHand with the same grip as the first-person idle pose.
+	local world = KnifeBuilder.AttachToCharacter("Butterfly", knifeTemplate, character) ]]
+function KnifeBuilder.AttachToCharacter(knife: string, knifeTemplate: Model, character: Model): Model?
+	local hand = character:FindFirstChild("RightHand")
+	if not (hand and hand:IsA("BasePart")) then
+		warn("[KnifeBuilder] AttachToCharacter needs an R15 RightHand")
+		return nil
+	end
+	local kd = RigData.Knives[knife]
+	local model = knifeTemplate:Clone()
+	model.Name = knife .. "_World"
+	local root = model.PrimaryPart
+	local rootBone = kd.Bones[1]
+	local c0 = pivotInPart(hand, "RightHand") * BONE[rootBone].Offset * kd.IdleGrip
+	local w = Instance.new("Weld")
+	w.Name = "KnifeGrip"
+	w.Part0 = hand
+	w.Part1 = root
+	w.C0 = c0
+	w.Parent = root
+	model.Parent = character
+	return model
+end
+
 return KnifeBuilder

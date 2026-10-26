@@ -55,3 +55,53 @@ def render_action(rig, act, out_path, fps=30, every=1, frames=None, label=None):
                "-pix_fmt", "yuv420p", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", out_path + ".mp4"]
         subprocess.run(cmd, check=True)
     return tmp
+
+
+def setup_beauty(res=(960, 540), samples=24):
+    """EEVEE look-dev for showcase videos: sun + sky, soft shadows, AgX."""
+    import math
+    sc = bpy.context.scene
+    setup_eevee(res, samples)
+    sc.view_settings.look = "AgX - Medium High Contrast"
+    world = bpy.data.worlds.get("BeautyWorld") or bpy.data.worlds.new("BeautyWorld")
+    world.use_nodes = True
+    nt = world.node_tree
+    bg = nt.nodes.get("Background")
+    sky = nt.nodes.get("Sky") or nt.nodes.new("ShaderNodeTexSky")
+    sky.name = "Sky"
+    try:
+        sky.sky_type = "NISHITA"
+        sky.sun_elevation = math.radians(38)
+        sky.sun_rotation = math.radians(150)
+        sky.sun_disc = False
+    except Exception:
+        pass
+    nt.links.new(sky.outputs["Color"], bg.inputs["Color"])
+    bg.inputs["Strength"].default_value = 0.35
+    sc.world = world
+    sun = bpy.data.objects.get("BeautySun")
+    if sun is None:
+        ld = bpy.data.lights.new("BeautySun", "SUN")
+        ld.energy = 3.2
+        ld.angle = math.radians(3)
+        sun = bpy.data.objects.new("BeautySun", ld)
+        sc.collection.objects.link(sun)
+    sun.rotation_euler = (math.radians(50), 0, math.radians(-35))
+    fill = bpy.data.objects.get("BeautyFill")
+    if fill is None:
+        ld = bpy.data.lights.new("BeautyFill", "AREA")
+        ld.energy = 120
+        ld.size = 4
+        fill = bpy.data.objects.new("BeautyFill", ld)
+        sc.collection.objects.link(fill)
+    fill.location = (-2.5, -1.0, 1.5)
+    fill.rotation_euler = (math.radians(70), 0, math.radians(-110))
+    # nicer environment materials
+    for name, col, rough in (("ENV_A", (0.55, 0.50, 0.43), 0.8), ("ENV_B", (0.47, 0.43, 0.37), 0.8),
+                             ("ENV_Wall", (0.78, 0.70, 0.58), 0.9)):
+        m = bpy.data.materials.get(name)
+        if m and m.node_tree:
+            b = m.node_tree.nodes.get("Principled BSDF")
+            if b:
+                b.inputs["Base Color"].default_value = (*col, 1)
+                b.inputs["Roughness"].default_value = rough
