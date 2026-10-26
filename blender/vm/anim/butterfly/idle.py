@@ -10,11 +10,15 @@ the joint end -> start is seamless in value and velocity):
     and draws it back a touch; the wrist pitch / roll follow 0.12-0.2 s later
     (overlap), the elbow sinks slightly.
   * weight shift: one slow figure-of-eight-ish drift over the whole loop
-    (hand x / z, yaw, roll as a mix of the 1st-3rd loop harmonics).
+    (hand x / z, yaw, roll as a mix of the 1st-3rd loop harmonics with
+    different phases, each shifted so it is 0 at t = 0).
   * wrist micro motion: tiny higher harmonics on the hand rotation
-    (+-0.1-0.2 deg), loop-safe by construction.
-The knife stays in the idle grip, handles closed together (bf open), camera
-still.
+    (+-0.05-0.15 deg), loop-safe by construction.
+The viewmodel moves almost rigidly (CS2 master idle f408-429: ~1.2 % of the
+screen height peak to peak, rotation <= ~0.5 deg): here the hand rises
+~0.045 stud (~8-9 px at 720p) per breath and drifts ~4 px sideways over the
+loop.  The knife stays in the idle grip, handles together (bf open), no
+fidgets, camera still.
 """
 
 import math
@@ -42,8 +46,14 @@ def breath(t):
 
 
 def harm(t, coefs):
-    """sum a_k sin(k w t): zero at t = 0, periodic over LENGTH."""
-    return sum(a * math.sin(k * W * t) for k, a in coefs)
+    """sum a_k (sin(k w t + ph_k) - sin(ph_k)): zero at t = 0, periodic over
+    LENGTH; coefs = (k, a) or (k, a, phase_deg)."""
+    out = 0.0
+    for c in coefs:
+        k, amp = c[0], c[1]
+        ph = math.radians(c[2]) if len(c) > 2 else 0.0
+        out += amp * (math.sin(k * W * t + ph) - math.sin(ph))
+    return out
 
 
 def offsets(t):
@@ -51,16 +61,16 @@ def offsets(t):
     b_rot = breath(t - 0.12)            # wrist follows the chest a beat later
     b_roll = breath(t - 0.20)
     d_pos = (
-        0.004 * b + harm(t, ((1, 0.012), (2, -0.003))),
-        -0.010 * b + harm(t, ((1, 0.004), (3, 0.002))),
-        0.028 * b + harm(t, ((1, -0.004), (2, 0.006))),
+        0.004 * b + harm(t, ((1, 0.010), (2, -0.003, 60))),
+        -0.008 * b + harm(t, ((1, 0.004, 40), (3, 0.0015))),
+        0.042 * b + harm(t, ((1, -0.005, 30), (2, 0.006, -50))),
     )
     d_rot = (
-        0.9 * b_rot + harm(t, ((2, 0.20), (5, 0.10), (7, 0.07))),     # pitch
-        harm(t, ((1, 0.50), (3, 0.12), (8, 0.06))),                    # yaw
-        -0.55 * b_roll + harm(t, ((1, -0.70), (2, 0.25), (6, 0.09))),  # roll
+        0.55 * b_rot + harm(t, ((2, 0.15, 35), (5, 0.07), (7, 0.05, 80))),      # pitch (tip lags)
+        harm(t, ((1, 0.40, 25), (3, 0.10, -40), (8, 0.04))),                     # yaw
+        -0.40 * b_roll + harm(t, ((1, -0.50, 50), (2, 0.18), (6, 0.06, 120))),   # roll
     )
-    d_elbow = (harm(t, ((1, 0.015),)), 0.0, -0.02 * b)
+    d_elbow = (harm(t, ((1, 0.02, 20),)), 0.0, -0.03 * b)
     return d_pos, d_rot, d_elbow
 
 

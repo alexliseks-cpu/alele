@@ -23,17 +23,26 @@ frame, euler XYZ so knife rot X = spin about the pin axis / blade flat normal).
 STABLE API
     IDLE              dict: R_pos, R_rot, R_elbow, R_shoulder, knife_pos,
                       knife_rot, anchor, bf, L_pos, L_rot  (the base pose)
-    GRIP              dict(pos, rot, anchor) = the idle knife grip.  It is
-                      poses.GRIPS["butterfly"] rotated -15 deg about the pin
-                      axis (knife rot X 90 -> 75, pins shifted so the handle
-                      still crosses the hand block centre): the handle lies
-                      diagonally in the fist, blade tilted towards the
-                      "fingers" side like a natural hammer grip.  Use GRIP
-                      (not poses.GRIPS) whenever the knife returns to the hand.
-                      Note XYZ euler: rot Y = 90 is a gimbal singularity (X and
-                      Z both turn about the pin axis) - spin with X; if you
-                      need other axes use knife_rot_for_order() and
-                      Anim(..., knife_rot_order=...).
+    GRIP              dict(pos, rot, anchor) = the idle knife grip (open
+                      knife, anchor "A"): poses.GRIPS["butterfly"] tilted 20 deg
+                      towards the "fingers" side (the handle crosses the fist
+                      diagonally, like a natural hammer grip) and rolled 150 deg
+                      about the knife's long axis so that, with the pronated
+                      fist of IDLE, the EDGE faces down / towards the curled
+                      fingers, the SPINE faces up and the blade flat faces the
+                      camera (CS2 look; the handle pack then lies inside the
+                      0.3-stud hand slab).  Pins 0.6 stud from the hand centre,
+                      the handle passes through the block centre.  Use GRIP (not
+                      poses.GRIPS) whenever the knife returns to the hand.
+                      Euler XYZ (0, -120, -70): no gimbal singularity; knife
+                      rot X is a spin about the knife's own pin axis, so
+                      spinning X 0 -> 360 * n about the pins is safe.
+                      Directions seen from the game camera at IDLE: knife rot
+                      X + turns the tip up (clockwise on screen: left -> up ->
+                      right), bf a + swings the blade (and handle B) up over
+                      the fist the same way into the closed position, hand
+                      roll + (pronation) drops the tip, hand pitch barely
+                      moves it (the knife lies across the view).
     CLOSED            knife-only pose dict for the closed knife held by the
                       safe handle A in the same grip (bf = (1, 1, 0)).
     OFFSCREEN         pose dict to start the draw: hand low right, outside
@@ -60,18 +69,54 @@ STABLE API
                       small overshoot past IDLE at t_end - 0.45 * dur and IDLE
                       (flat) at t_end.
     new_anim(name, length, **kw) -> Anim(name, "butterfly", length, **kw)
-    idle_controls() -> skeleton control dict of IDLE (for probes / math)
+    pose_controls(pose) -> skeleton control dict of a pose dict
+    idle_controls()   -> skeleton control dict of IDLE (for probes / math)
     knife_rot_for_order(order, rot=IDLE knife_rot) -> same rotation in another
-                      euler order (compatible with Anim(knife_rot_order=...))
+                      euler order.  Pose dicts always store knife_rot in XYZ;
+                      key_idle / key_pose convert it to the clip's
+                      Anim.knife_rot_order automatically (knife_turns are
+                      added in the clip's order).
+    probe(pose_or_controls) -> dict: screen (x, y in 0..1, 16:9, 70 deg FOV)
+                      and depth of hand / pins / tip / handle butt / wrist /
+                      elbow, wrist flex & dev, stretched flag, min distance to
+                      the camera, screen share covered by the forearm and upper
+                      arm.  Pure math (no render): use it to tune key poses.
 
-COMPOSITION (70 deg vertical FOV game camera, 16:9): hand block centre at
-screen ~(0.66, 0.79), pins ~(0.60, 0.72), blade tip ~(0.46, 0.57) - the open
-knife points up-left ~31 deg above horizontal with its flat towards the
-camera, the forearm enters diagonally from the bottom-right corner (elbow
-just below the bottom edge), nothing closer than ~1.9 studs to the camera.
-Wrist at idle: flex ~-7, dev ~-23 (limits 85 / 45), i.e. headroom for
-flicks; for big wrist motions move the elbow (R_elbow) and the hand position
-instead of bending the blocky R15 hand further.
+COMPOSITION (70 deg vertical FOV game camera, 16:9), matched to the CS2
+butterfly idle footprint (ref_specs/butterfly_idle.md: tip (0.44, 0.64),
+pivot (0.605, 0.76), butt (0.835, 0.88), knife ~19 deg above horizontal,
+lying across the view): hand block centre (0.685, 0.80) at 2.95 studs,
+pins (0.605, 0.75), blade tip (0.46, 0.65), handle butt (0.81, 0.88); the
+open knife lies across the view pointing left and ~20 deg up, tip a touch
+deeper than the pins, edge down, flat towards the camera.  The pronated
+fist shows its back / top, the forearm goes down to the bottom-right edge
+(elbow just below the frame), nothing is closer than ~2.4 studs to the
+camera.  Wrist at idle: flex ~+6, dev ~-11 (warning limits 85 / 45) - plenty
+of headroom for flicks; for big wrist motions still move the elbow
+(R_elbow) and the hand position instead of bending the blocky hand further.
+The left arm is parked out of view (CS2 shows a relaxed left hand bottom
+left; with 1x1-stud R15 blocks that only adds a black block, so it is off).
+
+REACH (read before posing attacks): the right shoulder pivot sits at
+(1.0, 1.90, -1.69), i.e. below / right of the camera, and the arm is only
+~1.6 studs long.  Highest screen y the hand centre can reach (arm straight,
+0 = top of the screen), per hand depth and screen x:
+             x=0.35  0.45  0.55  0.65  0.75  0.85  0.95
+    d=1.6      --    0.78  0.62  0.54  0.52  0.54  0.61
+    d=2.0      --    0.72  0.57  0.51  0.50  0.56  0.70
+    d=2.4      --    0.74  0.57  0.52  0.54  0.65   --
+    d=2.8      --    0.89  0.60  0.56  0.61   --    --
+    d=3.2      --     --   0.68  0.63  0.79   --    --
+(idle: x 0.685, y 0.80, d 2.95 - comfortably inside, elbow bent).
+Higher / further than that the solver drags the hidden shoulder along with a
+locked straight arm (probe()["stretched"]) - acceptable for a frame or two
+of a fast extension, but for a held high / left reach key a small R_shoulder
+offset in and out smoothly (a few tenths of a stud: + z up, + y forward,
+- x towards the centre for left-side follow-throughs).
+The arm parts are 1x1-stud black blocks: the closer the hand comes, the more
+of the screen the forearm / upper arm cover (probe()["arm_cover"]; idle is
+~0.05) - keep the forearm pointing into the screen (foreshortened) on wind-ups
+and keep hand depth >= ~2.2 for anything held longer than a few frames.
 """
 
 import math
@@ -84,19 +129,14 @@ from .. import poses
 # ---------------------------------------------------------------------------
 # grip / base pose
 # ---------------------------------------------------------------------------
-_TILT = 15.0          # deg, knife rotated about its pin axis towards distal
-_PIN_R = 0.60         # studs, pins from the hand block centre (as poses.BF_GRIP)
-
-GRIP = dict(
-    pos=(round(_PIN_R * math.cos(math.radians(_TILT)), 4), round(_PIN_R * math.sin(math.radians(_TILT)), 4), 0.0),
-    rot=(90.0 - _TILT, 90.0, 0.0),
-    anchor="A",
-)
+# idle grip: poses.GRIPS["butterfly"] tilted 20 deg towards distal, rolled
+# 150 deg about the knife's long axis (see the module docstring)
+GRIP = dict(pos=(0.5638, 0.2052, 0.0), rot=(0.0, -120.0, -70.0), anchor="A")
 
 IDLE = dict(
-    R_pos=(1.235, 3.10, -1.259),
-    R_rot=(55.0, -15.0, 55.0),
-    R_elbow=(0.40, -0.20, -0.30),
+    R_pos=(1.3587, 2.95, -1.2394),
+    R_rot=(60.0, 0.0, 90.0),
+    R_elbow=(0.20, -0.30, -0.50),
     R_shoulder=(0.0, 0.0, 0.0),
     knife_pos=GRIP["pos"],
     knife_rot=GRIP["rot"],
@@ -112,7 +152,7 @@ CLOSED = dict(knife_pos=GRIP["pos"], knife_rot=GRIP["rot"], anchor="A", bf=(1.0,
 
 # start of the draw: hand low right outside the view, wrist dropped, knife closed
 OFFSCREEN = dict(
-    R_pos=(1.75, 2.35, -2.45),
+    R_pos=(1.70, 2.30, -2.65),
     R_rot=(-10.0, -5.0, 80.0),
     R_elbow=(0.30, -0.20, -0.30),
     R_shoulder=(0.0, 0.0, 0.0),
@@ -137,6 +177,15 @@ def new_anim(name, length, **kw):
     return Anim(name, "butterfly", length, **kw)
 
 
+def _krot(a, rot, turns=(0.0, 0.0, 0.0)):
+    """XYZ knife euler -> the clip's knife_rot_order (+ whole turns)."""
+    if rot is None:
+        return None
+    if a.knife_rot_order != "XYZ":
+        rot = knife_rot_for_order(a.knife_rot_order, rot)
+    return _turned(rot, turns)
+
+
 def _has_anchor(a):
     ch = a.ch.get("knife.anchor")
     return bool(ch and ch.keys)
@@ -159,7 +208,7 @@ def key_pose(a, t, pose, interp="smooth", tangent="auto", knife=True, left=True)
     if knife:
         if "anchor" in pose and not _has_anchor(a):
             a.knife(t, anchor=pose["anchor"])
-        a.knife(t, pos=pose.get("knife_pos"), rot=pose.get("knife_rot"), interp=interp, tangent=tangent)
+        a.knife(t, pos=pose.get("knife_pos"), rot=_krot(a, pose.get("knife_rot")), interp=interp, tangent=tangent)
         if "bf" in pose:
             a.bf(t, *pose["bf"], interp=interp, tangent=tangent)
     if "cam_rot" in pose or "cam_pos" in pose:
@@ -178,7 +227,7 @@ def key_idle(a, t, interp="smooth", tangent="flat", knife=True, left=True,
     if knife:
         if not _has_anchor(a):
             a.knife(t, anchor=IDLE["anchor"])
-        a.knife(t, pos=IDLE["knife_pos"], rot=_turned(IDLE["knife_rot"], knife_turns), interp=interp, tangent=tangent)
+        a.knife(t, pos=IDLE["knife_pos"], rot=_krot(a, IDLE["knife_rot"], knife_turns), interp=interp, tangent=tangent)
         a.bf(t, *IDLE["bf"], interp=interp, tangent=tangent)
     a.cam(t, rot=(0.0, 0.0, 0.0), pos=(0.0, 0.0, 0.0), interp=interp, tangent=tangent)
     if left:
@@ -231,12 +280,76 @@ def settle_into_idle(a, t_end, dur=0.25, overshoot=0.18, max_pos=0.05, max_rot=3
 # ---------------------------------------------------------------------------
 # math helpers
 # ---------------------------------------------------------------------------
+def pose_controls(pose):
+    """Pose dict (IDLE format) -> skeleton control dict."""
+    c = idle_controls()
+    for k, ck in (("R_pos", "R.pos"), ("R_rot", "R.rot"), ("R_elbow", "R.elbow"), ("R_shoulder", "R.shoulder"),
+                  ("L_pos", "L.pos"), ("L_rot", "L.rot"), ("knife_pos", "knife.pos"), ("knife_rot", "knife.rot"),
+                  ("anchor", "knife.anchor"), ("bf", "bf"), ("cam_rot", "cam.rot"), ("cam_pos", "cam.pos")):
+        if k in pose:
+            c[ck] = tuple(pose[k]) if isinstance(pose[k], (tuple, list)) else pose[k]
+    return c
+
+
 def idle_controls():
     """IDLE as a skeleton control dict (skeleton.evaluate(idle_controls(), ...))."""
     return {"R.pos": IDLE["R_pos"], "R.rot": IDLE["R_rot"], "R.elbow": IDLE["R_elbow"],
             "R.shoulder": IDLE["R_shoulder"], "L.pos": IDLE["L_pos"], "L.rot": IDLE["L_rot"],
             "knife.pos": IDLE["knife_pos"], "knife.rot": IDLE["knife_rot"], "knife.anchor": IDLE["anchor"],
             "bf": IDLE["bf"], "cam.pos": (0.0, 0.0, 0.0), "cam.rot": (0.0, 0.0, 0.0)}
+
+
+_TAN_HALF_FOV = math.tan(math.radians(35.0))
+_ASPECT = 16.0 / 9.0
+
+
+def _screen(p):
+    """viewmodel point -> (x, y, depth); x, y in 0..1 (0, 0 = top left)."""
+    if p.y < 1e-3:
+        return (float("nan"), float("nan"), p.y)
+    return (0.5 + 0.5 * p.x / (p.y * _TAN_HALF_FOV * _ASPECT), 0.5 - 0.5 * p.z / (p.y * _TAN_HALF_FOV), p.y)
+
+
+def probe(pose_or_controls=None, knife_rot_order="XYZ"):
+    """Quick numeric check of a pose (IDLE-format dict, or a control dict as
+    returned by Anim.controls(t); default IDLE).  Camera shake is ignored."""
+    from mathutils import Vector
+    from ... import skeleton, spec
+    src = IDLE if pose_or_controls is None else pose_or_controls
+    c = dict(src) if "R.pos" in src else pose_controls(src)
+    c["cam.rot"], c["cam.pos"] = (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)
+    info = {}
+    W = skeleton.evaluate(c, knife_rot_order, "butterfly", info)
+    ks = spec.KNIFE_SCALE
+    hand = W["RightHand"]
+    hc = hand.translation + hand.to_3x3() @ skeleton.V_HAND
+    blade = W["BF_Blade"] @ skeleton.T(-skeleton.PIN_A)
+    link_a = W["BF_HandleA"] @ skeleton.T(-skeleton.PIN_A)
+    tip = blade @ Vector((0.0, spec.BF_BLADE_LEN * ks, 0.0))
+    pins = blade @ Vector((0.0, 0.0, 0.0))
+    butt = link_a @ Vector((0.0, -spec.BF_HANDLE_LEN * ks, 0.0))
+    r15 = spec.R15
+    blocks = {"RightUpperArm": (r15["upper_size"], -Vector(r15["upper_shoulder"])),
+              "RightLowerArm": (r15["lower_size"], -Vector(r15["lower_elbow"])),
+              "RightHand": (r15["hand_size"], -Vector(r15["hand_wrist"]))}
+    corners, cover = [], 0.0
+    for bone, (size, centre) in blocks.items():
+        cs = [W[bone] @ (centre + Vector((sx * size[0], sy * size[1], sz * size[2])))
+              for sx in (-0.5, 0.5) for sy in (-0.5, 0.5) for sz in (-0.5, 0.5)]
+        corners += cs
+        if bone != "RightHand":
+            ss = [_screen(p) for p in cs if p.y > 0.05]
+            if ss:
+                x0, x1 = max(0.0, min(q[0] for q in ss)), min(1.0, max(q[0] for q in ss))
+                y0, y1 = max(0.0, min(q[1] for q in ss)), min(1.0, max(q[1] for q in ss))
+                cover += max(0.0, x1 - x0) * max(0.0, y1 - y0) * 0.5   # ~half a bbox is block
+    return dict(
+        hand=_screen(hc), pins=_screen(pins), tip=_screen(tip), butt=_screen(butt),
+        wrist=_screen(W["RightHand"].translation), elbow=_screen(W["RightLowerArm"].translation),
+        wrist_flex=info["R"]["wrist_flex"], wrist_dev=info["R"]["wrist_dev"], stretched=info["R"]["stretched"],
+        min_cam_dist=min(p.length for p in corners + [tip, pins, butt]),
+        arm_cover=min(1.0, cover),
+    )
 
 
 def knife_rot_for_order(order, rot=None):

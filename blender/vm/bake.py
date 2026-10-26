@@ -171,6 +171,21 @@ def export_material(name, imgs):
     nm.uv_map = "AtlasUV"
     nt.links.new(nodes["Normal"].outputs["Color"], nm.inputs["Color"])
     nt.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
+    # viewport / Workbench colour = average of the baked maps
+    try:
+        import numpy as np
+        for k, attr in (("Color", "diffuse_color"), ("Roughness", "roughness"), ("Metalness", "metallic")):
+            px = np.empty(len(imgs[k].pixels), dtype=np.float32)
+            imgs[k].pixels.foreach_get(px)
+            px = px.reshape(-1, 4)[:, :3]
+            px = px[px.sum(axis=1) > 0.003] if attr == "diffuse_color" else px   # ignore empty atlas space
+            mean = px.mean(axis=0) if len(px) else np.array([0.5, 0.5, 0.5])
+            if attr == "diffuse_color":
+                m.diffuse_color = (float(mean[0]), float(mean[1]), float(mean[2]), 1.0)
+            else:
+                setattr(m, attr, float(mean.mean()))
+    except Exception as e:
+        print("[bake] viewport colour skipped:", e)
     return m
 
 

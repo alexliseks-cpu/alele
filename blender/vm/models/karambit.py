@@ -47,17 +47,22 @@ SCALE_IN = TANG_HALF                           # scales sit on the tang
 SCALE_OUT = H_T / 2.0
 
 # blade spine start (top of the guard face) and its initial heading
-B_ANGLE0 = math.radians(-16.0)
+B_ANGLE0 = math.radians(-26.0)
 B_T0 = Vector((math.cos(B_ANGLE0), math.sin(B_ANGLE0)))
 B_N0 = Vector((math.sin(B_ANGLE0), -math.cos(B_ANGLE0)))      # towards the edge
-_GUARD_SPINE_Z = 10.0
+_GUARD_SPINE_Z = 16.0
 # place the spine start so the (slanted) guard face crosses Z=0 exactly at H_END
 B0 = Vector((H_END, 0.0)) - B_N0 * (_GUARD_SPINE_Z / -B_N0.y)
-GUARD_TOP = B0 - B_N0 * 1.0
-QUILLON = B0 + B_N0 * 27.5
+GUARD_TOP = B0 - B_N0 * 1.2
+# blade proportions were tuned for an 82 mm spine; they follow the contract if it changes
+B_SIZE = (B_ARC / 82.0) ** 0.75
+QUILLON = B0 + B_N0 * min(44.0, max(38.0, 25.5 * B_SIZE + 12.5))
 
-SCREWS = [(24.0, 6.0), (57.0, 3.6), (87.5, 1.4)]
+SCREWS = [(25.0, 11.0), (57.0, 12.4), (86.0, 7.0)]
 SCREW_R = 2.5
+
+# per-vertex analytic normals of the part being built (BMVert -> Vector)
+_VN = {}
 
 
 # ----------------------------------------------------------------------------
@@ -214,7 +219,7 @@ class Outline:
         for p, t in zip(pts[1:], tg[1:]):
             if (p - cp[-1]).length > 0.02:
                 cp.append(p)
-                ct.append(min(t, ct[-1]) if (p - cp[-1]).length < 0.05 else t)
+                ct.append(t)
             else:
                 ct[-1] = min(ct[-1], t)
         if (cp[-1] - cp[0]).length < 0.02:
@@ -264,6 +269,39 @@ def inset_dirs(pts):
     return out
 
 
+def _seg_x(a1, a2, b1, b2):
+    d = (a2.x - a1.x) * (b2.y - b1.y) - (a2.y - a1.y) * (b2.x - b1.x)
+    if abs(d) < 1e-12:
+        return False
+    t = ((b1.x - a1.x) * (b2.y - b1.y) - (b1.y - a1.y) * (b2.x - b1.x)) / d
+    u = ((b1.x - a1.x) * (a2.y - a1.y) - (b1.y - a1.y) * (a2.x - a1.x)) / d
+    return 0.0 < t < 1.0 and 0.0 < u < 1.0
+
+
+def safe_radii(loop, radii, window=30, iters=40):
+    """Shrink per-vertex inset radii until the inset loop has no local self-intersections."""
+    radii = list(radii)
+    dirs = inset_dirs(loop)
+    n = len(loop)
+    for _ in range(iters):
+        cap = [p + d * r for p, d, r in zip(loop, dirs, radii)]
+        bad = set()
+        for i in range(n):
+            a1, a2 = cap[i], cap[(i + 1) % n]
+            for k in range(2, window):
+                j = (i + k) % n
+                if (j + 1) % n == i:
+                    break
+                if _seg_x(a1, a2, cap[j], cap[(j + 1) % n]):
+                    for m in range(i - 1, i + k + 3):
+                        bad.add(m % n)
+        if not bad:
+            break
+        for m in bad:
+            radii[m] *= 0.75
+    return radii
+
+
 def signed_area(pts):
     return 0.5 * sum(pts[i - 1].x * pts[i].y - pts[i].x * pts[i - 1].y for i in range(len(pts)))
 
@@ -271,45 +309,28 @@ def signed_area(pts):
 # ----------------------------------------------------------------------------
 # bmesh builders (mm)
 # ----------------------------------------------------------------------------
-def zip_annulus(bm, outer, inner, center, mat=0, flip=False):
-    """Triangulate the ring between two star-shaped loops (vertex lists) around center."""
-    def ang(v):
-        return math.atan2(v.co.z - center[1], v.co.y - center[0])
-
-    def prep(loop):
-        a = [ang(v) for v in loop]
-        i0 = min(range(len(loop)), key=lambda i: a[i] % (2 * math.pi))
-        lp = loop[i0:] + loop[:i0]
-        aa = [ang(v) % (2 * math.pi) for v in lp]
-        # unwrap monotonically increasing
-        for i in range(1, len(aa)):
-            while aa[i] < aa[i - 1] - 1e-9:
-                aa[i] += 2 * math.pi
-        return lp, aa
-
-    o, oa = prep(outer)
-    q, qa = prep(inner)
-    o = o + [o[0]]
-    oa = oa + [oa[0] + 2 * math.pi]
-    q = q + [q[0]]
-    qa = qa + [qa[0] + 2 * math.pi]
-    i = j = 0
-    faces = []
-    while i < len(o) - 1 or j < len(q) - 1:
-        if j >= len(q) - 1 or (i < len(o) - 1 and oa[i + 1] <= qa[j + 1]):
-            tri = (o[i], o[i + 1], q[j])
-            i += 1
-        else:
-            tri = (o[i], q[j + 1], q[j])
-            j += 1
-        if len({id(v) for v in tri}) == 3:
-            try:
-                f = bm.faces.new(tri if not flip else tri[::-1])
-                f.material_index = mat
-                faces.append(f)
-            except ValueError:
-                pass
+def fill_between(bm, loops, mat=0):
+    """Planar cap bounded by one or more closed vertex loops (holes allowed)."""
+    edges = []
+    for lp in loops:
+        n = len(lp)
+        for i in range(n):
+            e = bm.edges.get((lp[i], lp[(i + 1) % n]))
+            if e is None:
+                e = bm.edges.new((lp[i], lp[(i + 1) % n]))
+            edges.append(e)
+    res = bmesh.ops.triangle_fill(bm, use_beauty=True, use_dissolve=False, edges=edges, normal=(1.0, 0.0, 0.0))
+    faces = [g for g in res["geom"] if isinstance(g, bmesh.types.BMFace)]
+    for f in faces:
+        f.material_index = mat
     return faces
+
+
+def _out3(d2, fx=0.0, fo=1.0):
+    """3D normal from an inward 2D miter dir: fx * X + fo * outward."""
+    o = -d2.normalized()
+    v = Vector((fx, o.x * fo, o.y * fo))
+    return v.normalized()
 
 
 # ----------------------------------------------------------------------------
@@ -317,23 +338,27 @@ def zip_annulus(bm, outer, inner, center, mat=0, flip=False):
 # ----------------------------------------------------------------------------
 def handle_outline(rear_r):
     """Scale / tang outline (mm, CCW).  rear_r: radius of the concave cut that
-    hugs the ring at the butt (scales: H_START, tang: hidden inside the ring)."""
+    hugs the ring at the butt (scales: H_START, tang: hidden inside the ring).
+    Banana profile of the reference: the spine arches up over the middle of the
+    grip, the belly carries three finger grooves and ends in a hooked quillon."""
     o = Outline()
     R = 1.8
     gt, q = GUARD_TOP, QUILLON
-    # spine: guard top -> small hump -> front jimping -> thumb dip -> arch
-    o.add(spline([gt, (100.9, 12.2), (99.1, 12.75), (97.3, 12.65)]), R, corner=1.1, ccap=0.85)
-    o.add(jimping(97.3, 84.5, 12.65, 12.05, 8, 0.75), 0.32)
-    o.add(spline([(84.5, 12.05), (81.8, 11.7), (77.5, 11.55), (71.5, 12.25), (63.5, 13.7),
-                  (53.5, 15.4), (42.0, 16.9), (31.0, 17.7), (21.5, 18.0), (18.8, 18.0)]), R)
-    o.add(jimping(18.8, 7.6, 18.0, 18.12, 7, 0.7), 0.32)
+    # spine: guard top -> hump -> front jimping (thumb ramp) -> dip -> arch
+    o.add(spline([gt, (106.9, 18.0), (105.3, 18.35), (104.0, 18.3)]), R, corner=1.1, ccap=0.85)
+    o.add(jimping(104.0, 91.0, 18.3, 17.5, 7, 0.8), 0.32)
+    o.add(spline([(91.0, 17.5), (88.5, 17.35), (84.0, 17.9), (76.0, 21.0), (66.0, 24.4),
+                  (55.0, 26.4), (44.0, 27.2), (34.0, 26.9), (28.0, 26.0), (24.0, 25.0)]), R)
+    # rear jimping where the spine starts to roll down towards the ring
+    o.add(jimping(24.0, 12.6, 25.0, 22.1, 4, 1.15), 0.4)
     # rear: spine rolls over the ring top into a straight line parallel to the
     # ring's 135 deg flat (continued by the ring tail spur)
     c45 = RING_RO * math.cos(math.radians(22.5)) * math.sqrt(2) + 1.25
-    yj = 18.2 - c45
-    o.add(spline([(7.6, 18.12), (3.5, 18.25), (0.0, 18.22), (yj, 18.2)]), R)
+    zj = 19.4
+    yj = zj - c45
+    o.add(spline([(12.6, 22.1), (9.0, 21.2), (4.5, 20.1), (yj, zj)]), R)
     rc = Vector((-9.9, -9.9 + c45))
-    o.add(line((yj, 18.2), rc), R, corner=3.2, ccap=R)
+    o.add(line((yj, zj), rc), R, corner=3.2, ccap=R)
     a_s = math.atan2(rc.y, rc.x)
     a_e = math.radians(-34.0)
     pa = Vector((math.cos(a_s), math.sin(a_s))) * rear_r
@@ -341,15 +366,15 @@ def handle_outline(rear_r):
     o.add(arc((0, 0), rear_r, a_s, a_e), 0.9, corner=0.5, ccap=0.6)
     pe = Vector((math.cos(a_e), math.sin(a_e))) * rear_r
     j = Vector((14.9, -8.2))
-    o.add(line(pe, j), 0.6, corner=0.55, ccap=0.5)
-    # belly: three finger grooves, ridges between them, quillon
-    o.add(spline([j, (18.0, -7.3), (22.5, -6.5), (29.0, -7.7), (34.2, -9.55), (35.8, -9.75),
-                  (37.6, -9.45), (43.5, -7.2), (51.0, -5.5), (57.5, -7.6), (61.8, -10.3),
-                  (63.4, -10.55), (65.2, -10.2), (70.0, -7.9), (76.0, -6.1), (83.5, -7.3),
-                  (89.0, -10.8), (92.6, -14.2), q]), R, corner=0.8, ccap=1.1)
+    o.add(line(pe, j), 0.6, corner=0.9, ccap=0.4)
+    # belly: three finger grooves (middle / ring / little finger), ridges, quillon
+    o.add(spline([j, (18.5, -5.6), (23.5, -2.6), (29.5, -3.4), (34.2, -5.15), (35.8, -5.4),
+                  (37.6, -5.05), (43.0, -1.8), (51.0, 0.6), (57.5, -1.0), (61.8, -4.3),
+                  (63.4, -4.6), (65.2, -4.2), (70.0, -1.8), (76.5, 0.4), (81.5, -0.6),
+                  (84.6, -3.8), (86.4, -8.9), (87.9, -14.2), q]), R, corner=0.8, ccap=1.1)
     # guard face: straight, perpendicular to the blade's initial heading
-    o.add(line(q, gt), R, corner=1.5, ccap=1.25)
-    return o.build()
+    o.add(line(q, gt), R, corner=2.8, ccap=1.4)
+    return o.build(tol=0.025, max_len=3.0)
 
 
 def ring_outlines():
@@ -358,13 +383,13 @@ def ring_outlines():
     verts = [Vector((math.cos(math.radians(22.5 + 45 * k)), math.sin(math.radians(22.5 + 45 * k)))) * RING_RO
              for k in range(8)]
     d = (verts[3] - verts[2]).normalized()
-    spur = verts[3] + d * 5.2
+    spur = verts[3] + d * 7.5
     poly = [verts[0], verts[1], verts[2], spur, verts[4], verts[5], verts[6], verts[7]]
-    cor = [0.75, 0.75, 0.75, 0.5, 0.75, 0.75, 0.75, 0.75]
+    cor = [0.75, 0.75, 0.75, 0.6, 0.75, 0.75, 0.75, 0.75]
     for k in range(8):
         a, b = poly[k], poly[(k + 1) % 8]
         o.add(line(a, b), 0.9, corner=cor[k], ccap=0.9)
-    outer, ocaps = o.build(tol=0.01, max_len=1.6)
+    outer, ocaps = o.build(tol=0.01, max_len=6.0)
     ap = RING_RI / math.cos(math.radians(22.5))
     iv = [Vector((math.cos(math.radians(22.5 + 45 * k)), math.sin(math.radians(22.5 + 45 * k)))) * ap
           for k in range(8)]
@@ -372,7 +397,7 @@ def ring_outlines():
     iv = list(reversed(iv))                  # CW
     for k in range(8):
         oi.add(line(iv[k], iv[(k + 1) % 8]), 0.9, corner=0.55, ccap=0.9)
-    inner, icaps = oi.build(tol=0.01, max_len=1.6)
+    inner, icaps = oi.build(tol=0.01, max_len=6.0)
     return outer, ocaps, inner, icaps
 
 
@@ -409,7 +434,7 @@ def _pchip(xs, ys):
 
 # blade width (spine -> edge, mm) along the normalised spine length
 BLADE_W = _pchip([0.0, 0.11, 0.22, 0.44, 0.66, 0.80, 0.92, 1.0],
-                 [21.0, 20.0, 18.3, 14.2, 8.8, 4.9, 1.8, 0.0])
+                 [25.5, 23.8, 21.4, 16.4, 10.4, 5.9, 2.1, 0.0])
 CURV_RATIO = 2.8          # curvature at the tip / at the guard (hawkbill hooks harder at the tip)
 
 
@@ -449,7 +474,7 @@ PLUNGE = 2.6
 def blade_section(s):
     """Half cross-section (d from spine along N, half thickness h) at spine length s."""
     t = min(max(s / B_ARC, 0.0), 1.0)
-    w = BLADE_W(t)
+    w = BLADE_W(t) * B_SIZE
     hb = TANG_HALF * (1.0 - 0.5 * t ** 1.25)
     flare = 1.0 if s <= 0 else max(0.0, 1.0 - s / PLUNGE)
     hm = hb * (0.88 + 0.12 * flare)
@@ -457,7 +482,7 @@ def blade_section(s):
     tf = min(max((t - 0.55) / 0.3, 0.0), 1.0)
     hsp = min((0.52 * (1 - tf) + 0.07 * tf), 0.5 * hm)
     dsp = min(1.0, 0.055 * w)
-    dsw = min(max(0.30 * w, dsp + 0.05), 6.0)
+    dsw = min(max(0.34 * w, dsp + 0.05), 7.0)
     e = min(5.0, 0.24 * w)
     m = min(0.42, 0.035 * w + 0.03)
     hsl = hsp + 0.38 * (hm - hsp)
@@ -557,37 +582,58 @@ def _col_set(rows, j):
 # ----------------------------------------------------------------------------
 # parts
 # ----------------------------------------------------------------------------
-def build_scale(bm, loop, radii, side):
-    """One carbon-fibre scale on the +X (side=1) or -X (side=-1) face of the tang."""
-    xi, xo = side * SCALE_IN, side * SCALE_OUT
-    rows = []
-    for k in range(3):
-        ph = (math.pi / 2) * k / 2
-        rows.append(("rr", 1 - math.sin(ph), ph))
+def _loft(bm, loop, rows, vn=True):
+    """Loft a closed (y, z) loop through cross-section rows.
+    rows: [(inset_mm_per_vertex(list) | float, x_per_vertex(list) | float, (fx, fo) normal mix)].
+    The analytic vertex normal is fx * X + fo * outward-outline-normal."""
     dirs = inset_dirs(loop)
     rings = []
-    for kind, f, ph in rows:
+    for ins, xs, nmix in rows:
         ring = []
         for i, p in enumerate(loop):
-            r = radii[i]
-            q = p + dirs[i] * (r * f)
-            x = xo - side * r * (1 - math.cos(ph))
-            ring.append(bm.verts.new((x, q.x, q.y)))
+            d = ins[i] if isinstance(ins, (list, tuple)) else ins
+            x = xs[i] if isinstance(xs, (list, tuple)) else xs
+            q = p + dirs[i] * d
+            v = bm.verts.new((x, q.x, q.y))
+            if vn and nmix is not None:
+                _VN[v] = _out3(dirs[i], nmix[0], nmix[1])
+            ring.append(v)
         rings.append(ring)
-    c = 0.25
-    for ins, x in ((0.0, xi + side * c), (c, xi)):
-        rings.append([bm.verts.new((x, (p + dirs[i] * ins).x, (p + dirs[i] * ins).y)) for i, p in enumerate(loop)])
     n = len(loop)
+    faces = []
     for ra, rb in zip(rings[:-1], rings[1:]):
         for i in range(n):
             j = (i + 1) % n
-            bm.faces.new((ra[i], ra[j], rb[j], rb[i]))
-    top = bm.faces.new(rings[0])
-    bot = bm.faces.new(list(reversed(rings[-1])))
-    bmesh.ops.triangulate(bm, faces=[top, bot], quad_method="BEAUTY", ngon_method="BEAUTY")
+            faces.append(bm.faces.new((ra[i], ra[j], rb[j], rb[i])))
+    return rings, faces
 
 
-def build_screw(bm, y, z, side, segs=24):
+def _round_rows(radii, x_face, x_dir, segs=2):
+    """Rows of a quarter-round edge: from the face (x_face, inset = r) to the wall
+    (x_face - x_dir * r, inset 0).  x_dir = +1 for a face looking along +X."""
+    rows = []
+    for k in range(segs + 1):
+        ph = (math.pi / 2) * k / segs
+        rows.append(([r * (1 - math.sin(ph)) for r in radii],
+                     [x_face - x_dir * r * (1 - math.cos(ph)) for r in radii],
+                     (x_dir * math.cos(ph), math.sin(ph))))
+    return rows
+
+
+def build_scale(bm, loop, radii, side):
+    """One carbon-fibre scale on the +X (side=1) or -X (side=-1) face of the tang:
+    quarter-round outer edge, small chamfer against the tang (fine V-groove)."""
+    xi, xo = side * SCALE_IN, side * SCALE_OUT
+    c = 0.25
+    rows = _round_rows(radii, xo, side, segs=2)
+    cc = [min(c, 0.7 * r) for r in radii]
+    rows += [(0.0, [xi + side * q for q in cc], (0.0, 1.0)), (cc, xi, (-side * 0.7071, 0.7071))]
+    rings, _ = _loft(bm, loop, rows)
+    fill_between(bm, [rings[0]])
+    fill_between(bm, [rings[-1]])
+
+
+def build_screw(bm, y, z, side, segs=18):
     """Torx button-head screw sitting on the scale face (axis = X)."""
     x0 = side * SCALE_OUT
 
@@ -603,8 +649,8 @@ def build_screw(bm, y, z, side, segs=24):
     for kind, r, x in prof:
         ring = []
         for k in range(segs):
-            a = 2 * math.pi * k / segs + math.radians(7.5)
-            rr = r if kind == "c" else r * star(a - math.radians(7.5))
+            a = 2 * math.pi * k / segs
+            rr = r if kind == "c" else r * star(a)
             ring.append(bm.verts.new(P(rr, x, a)))
         rings.append(ring)
     for ra, rb in zip(rings[:-1], rings[1:]):
@@ -631,61 +677,39 @@ def build_screw(bm, y, z, side, segs=24):
 
 
 def build_tang(bm, loop):
-    dirs = inset_dirs(loop)
-    c = 0.2
-    spec_rows = [(c, TANG_HALF), (0.0, TANG_HALF - c), (0.0, -TANG_HALF + c), (c, -TANG_HALF)]
-    rings = []
-    for ins, x in spec_rows:
-        rings.append([bm.verts.new((x, (p + dirs[i] * ins).x, (p + dirs[i] * ins).y)) for i, p in enumerate(loop)])
-    n = len(loop)
-    out = []
-    for ra, rb in zip(rings[:-1], rings[1:]):
-        for i in range(n):
-            j = (i + 1) % n
-            f = bm.faces.new((ra[i], ra[j], rb[j], rb[i]))
-            f.material_index = M_COAT
-            out.append(f)
-    top = bm.faces.new(rings[0])
-    bot = bm.faces.new(list(reversed(rings[-1])))
-    top.material_index = bot.material_index = M_COAT
-    bmesh.ops.triangulate(bm, faces=[top, bot], quad_method="BEAUTY", ngon_method="BEAUTY")
-    for ring in (rings[1], rings[2]):
-        for v in ring:
-            for e in v.link_edges:
-                e.smooth = False
+    """Full tang plate between the scales; only its chamfered edge shows."""
+    h = TANG_HALF
+    c = safe_radii(loop, [0.2] * len(loop))
+    rows = [(c, h, (0.7071, 0.7071)), (0.0, [h - q for q in c], (0.0, 1.0)), (0.0, [-h + q for q in c], (0.0, 1.0)),
+            (c, -h, (-0.7071, 0.7071))]
+    rings, faces = _loft(bm, loop, rows)
+    faces += fill_between(bm, [rings[0]]) + fill_between(bm, [rings[-1]])
+    for f in faces:
+        f.material_index = M_COAT
 
 
 def build_ring(bm):
+    """Faceted octagonal finger ring with the tail spur, rounded edges both faces."""
     outer, ocaps, inner, icaps = ring_outlines()
     R = 0.9
-    # cross-section: rounded edges (2 segs) on both faces
-    rows = []
-    for k in range(3):
-        ph = (math.pi / 2) * k / 2
-        rows.append((1 - math.sin(ph), RING_T / 2 - R * (1 - math.cos(ph))))
-    rows += [(1 - math.sin((math.pi / 2) * k / 2), -(RING_T / 2 - R * (1 - math.cos((math.pi / 2) * k / 2))))
-             for k in (2, 1, 0)]
+    half = RING_T / 2
 
-    def loft(loop, caps):
-        dirs = inset_dirs(loop)
-        rings = []
-        for f, x in rows:
-            ring = []
-            for i, p in enumerate(loop):
-                q = p + dirs[i] * (f * min(R, caps[i]))
-                ring.append(bm.verts.new((x, q.x, q.y)))
-            rings.append(ring)
-        n = len(loop)
-        for ra, rb in zip(rings[:-1], rings[1:]):
-            for i in range(n):
-                j = (i + 1) % n
-                bm.faces.new((ra[i], ra[j], rb[j], rb[i]))
-        return rings
+    def rows_for(loop, caps):
+        rr = safe_radii(loop, [min(R, c) for c in caps])
+        top = _round_rows(rr, half, 1.0, segs=2)
+        bot = list(reversed(_round_rows(rr, -half, -1.0, segs=2)))
+        return top + bot
 
-    ro = loft(outer, ocaps)
-    ri = loft(inner, icaps)
-    zip_annulus(bm, ro[0], list(reversed(ri[0])), (0.0, 0.0))
-    zip_annulus(bm, ro[-1], list(reversed(ri[-1])), (0.0, 0.0), flip=True)
+    ro, _ = _loft(bm, outer, rows_for(outer, ocaps))
+    ri, _ = _loft(bm, inner, rows_for(inner, icaps))
+    fill_between(bm, [ro[0], ri[0]])
+    fill_between(bm, [ro[-1], ri[-1]])
+    for lp in (ro[0], ri[0]):
+        for v in lp:
+            _VN[v] = Vector((1.0, 0.0, 0.0))
+    for lp in (ro[-1], ri[-1]):
+        for v in lp:
+            _VN[v] = Vector((-1.0, 0.0, 0.0))
 
 
 # ----------------------------------------------------------------------------
@@ -780,10 +804,12 @@ class NB:
         return P, k
 
     def bump(self, height, dist, k, strength=1.0, normal=None):
+        """Bump of `height` * `dist` metres.  The scale factor k multiplies the
+        height (a linked Distance socket is not honoured by Cycles' bump)."""
         n = self.new("ShaderNodeBump")
         self.put(n.inputs["Strength"], strength)
-        self.put(n.inputs["Distance"], self.m("MULTIPLY", k, dist))
-        self.put(n.inputs["Height"], height)
+        n.inputs["Distance"].default_value = dist
+        self.put(n.inputs["Height"], self.m("MULTIPLY", height, k))
         if normal is not None:
             self.put(n.inputs["Normal"], normal)
         return n.outputs[0]
@@ -818,8 +844,10 @@ def twill(nb, u, v, fibre_scale=26.0):
     h_ac = nb.m("SUBTRACT", 1.0, nb.m("MULTIPLY", a2, a2), clamp=True)
     phase = nb.m("MULTIPLY", nb.m("ADD", nb.m("SUBTRACT", m4, nb.m("MULTIPLY", nb.m("SUBTRACT", 1.0, warp), 2.0)),
                                   along), 0.5)
-    h_al = nb.m("POWER", nb.m("SINE", nb.m("MULTIPLY", phase, math.pi), clamp=True), 0.45)
-    h = nb.m("MULTIPLY", nb.m("POWER", h_ac, 0.6), nb.lerp(0.6, 1.0, h_al))
+    h_al = nb.m("SINE", nb.m("MULTIPLY", phase, math.pi), clamp=True)
+    # smooth tow pillow (bounded slopes: no sparkle at the tow edges)
+    h = nb.m("MULTIPLY", nb.m("MULTIPLY", h_ac, nb.m("SUBTRACT", 3.0, nb.m("MULTIPLY", h_ac, 2.0))),
+             nb.lerp(0.7, 1.0, h_al))
     # fibre streaks running along the tow
     gu = nb.m("MULTIPLY_ADD", nb.m("SUBTRACT", u, v), warp, v)      # across coordinate (global)
     gv = nb.m("MULTIPLY_ADD", nb.m("SUBTRACT", v, u), warp, u)      # along coordinate
@@ -828,7 +856,9 @@ def twill(nb, u, v, fibre_scale=26.0):
     return warp, h, h_ac, fib
 
 
-def mat_carbon(name, bb_min, bb_size, cell=0.0026, relief=True, triplanar=True):
+def mat_carbon(name, bb_min, bb_size, cell=0.0026, relief=0.00004, triplanar=True,
+               vals=(0.009, 0.030), roughs=(0.56, 0.44)):
+    """Black 2/2 twill carbon fibre.  relief: tow bump height (m, 0 = printed film)."""
     nb = NB(name)
     P, k = nb.coords(bb_min, bb_size)
     x, y, z = nb.sep(P)
@@ -853,26 +883,24 @@ def mat_carbon(name, bb_min, bb_size, cell=0.0026, relief=True, triplanar=True):
     else:
         warp, h, hac, fib = wa, ha, haca, fa
     # colour: warp tows catch more light than weft tows (baked anisotropy look)
-    val = nb.lerp(0.014, 0.046, warp)
+    val = nb.lerp(vals[0], vals[1], warp)
     val = nb.m("MULTIPLY", val, nb.lerp(0.55, 1.0, hac))
     val = nb.m("MULTIPLY", val, nb.lerp(0.75, 1.25, fib))
     # resin: large soft variation
     big = nb.noise(P, 60.0, detail=2.0)
     val = nb.m("MULTIPLY", val, nb.lerp(0.9, 1.1, big))
-    rough = nb.lerp(0.36, 0.25, warp)
+    rough = nb.lerp(roughs[0], roughs[1], warp)
     rough = nb.m("ADD", rough, nb.m("MULTIPLY", nb.m("SUBTRACT", 1.0, hac), 0.10))
     rough = nb.m("ADD", rough, nb.m("MULTIPLY", nb.m("SUBTRACT", fib, 0.5), 0.06))
-    normal = None
-    if relief:
+    if relief > 0:
         hh = nb.m("ADD", h, nb.m("MULTIPLY", fib, 0.15))
-        normal = nb.bump(hh, 0.00010, k, strength=1.0)
+        normal = nb.bump(hh, relief, k, strength=1.0)
     else:
-        hh = nb.m("MULTIPLY", h, 0.25)
-        normal = nb.bump(hh, 0.00002, k, strength=1.0)
+        normal = nb.bump(nb.m("MULTIPLY", fib, 0.3), 0.000004, k, strength=1.0)
     return nb.principled(val, 0.0, rough, normal, tint=(1.0, 1.0, 1.03), spec_lvl=0.5)
 
 
-def mat_satin_steel(name, bb_min, bb_size, center_yz, base=0.60, rough0=0.27, tint=(0.98, 0.99, 1.02)):
+def mat_satin_steel(name, bb_min, bb_size, center_yz, base=0.50, rough0=0.34, tint=(0.98, 0.99, 1.02)):
     """Satin / brushed steel; brushing marks run concentric around center_yz (the
     blade arc) so they follow the hawkbill curve."""
     nb = NB(name)
@@ -924,7 +952,9 @@ def mat_coat(name, bb_min, bb_size, base=0.028, rough0=0.5, metallic=0.0):
 # object assembly
 # ----------------------------------------------------------------------------
 def _finish(name, bm, mats, tex_group, sharp_deg=None):
-    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+    """bmesh (mm) -> linked object (metres) with materials, UVMap and custom normals:
+    analytic normals where the builders recorded them (_VN), Blender's smooth /
+    sharp-edge corner normals everywhere else."""
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     bmesh.ops.scale(bm, vec=(0.001, 0.001, 0.001), verts=bm.verts)
     for f in bm.faces:
@@ -933,11 +963,21 @@ def _finish(name, bm, mats, tex_group, sharp_deg=None):
         lim = math.radians(sharp_deg)
         for e in bm.edges:
             if len(e.link_faces) == 2 and e.link_faces[0].normal.angle(e.link_faces[1].normal, 0) > lim:
-                e.smooth = False
+                if not (e.verts[0] in _VN and e.verts[1] in _VN):
+                    e.smooth = False
+    bm.verts.index_update()
+    vnorm = [_VN.get(v) for v in bm.verts]
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
+    _VN.clear()
     me.update()
+    cn = [tuple(c.vector) for c in me.corner_normals]
+    loops = []
+    for lp in me.loops:
+        n = vnorm[lp.vertex_index]
+        loops.append(tuple(n) if n is not None else cn[lp.index])
+    me.normals_split_custom_set(loops)
     obj = bpy.data.objects.new(name, me)
     mu.link(obj)
     obj["tex_group"] = tex_group
@@ -948,7 +988,6 @@ def _finish(name, bm, mats, tex_group, sharp_deg=None):
     for mk in mats:
         me.materials.append(mk(mn, mx - mn))
     _uv_unwrap(obj)
-    _weighted_normals(obj)
     return obj
 
 
@@ -968,36 +1007,23 @@ def _uv_unwrap(obj):
         obj.data.uv_layers[0].name = "UVMap"
 
 
-def _weighted_normals(obj):
-    mod = obj.modifiers.new("WN", "WEIGHTED_NORMAL")
-    mod.mode = "FACE_AREA"
-    mod.weight = 50
-    mod.keep_sharp = True
-    dg = bpy.context.evaluated_depsgraph_get()
-    ev = obj.evaluated_get(dg)
-    me = bpy.data.meshes.new_from_object(ev, preserve_all_data_layers=True, depsgraph=dg)
-    old = obj.data
-    obj.modifiers.clear()
-    obj.data = me
-    me.name = old.name
-    bpy.data.meshes.remove(old)
-
-
 def build():
     _col_cache.clear()
+    _VN.clear()
     # --- handle scales + screws -------------------------------------------------
     loop, radii = handle_outline(H_START)
     if signed_area(loop) < 0:
         raise RuntimeError("handle outline must be CCW")
+    sradii = safe_radii(loop, [min(r, 1.8) for r in radii])
     bm = bmesh.new()
     for side in (1, -1):
-        build_scale(bm, loop, [min(r, 1.8) for r in radii], side)
+        build_scale(bm, loop, sradii, side)
         for (y, z) in SCREWS:
             build_screw(bm, y, z, side)
     handle = _finish("KR_Handle_Mesh", bm, [
         lambda mn, sz: mat_carbon("KR_Handle_CarbonFibre", mn, sz),
-        lambda mn, sz: mat_coat("KR_Handle_ScrewSteel", mn, sz, base=0.16, rough0=0.3, metallic=1.0),
-    ], "handle")
+        lambda mn, sz: mat_coat("KR_Handle_ScrewSteel", mn, sz, base=0.09, rough0=0.38, metallic=1.0),
+    ], "handle", sharp_deg=50.0)
 
     # --- tang + blade -----------------------------------------------------------
     tloop, _ = handle_outline(12.8)
@@ -1010,10 +1036,11 @@ def build():
     kap = sp.k0 * (1 + (CURV_RATIO - 1) * mid / B_ARC)
     cen = (p + nrm * (1.0 / kap)) * 0.001
     blade = _finish("KR_Handle_Mesh_Blade", bm, [
-        lambda mn, sz: mat_carbon("KR_Blade_CarbonPrint", mn, sz, relief=False, triplanar=False),
+        lambda mn, sz: mat_carbon("KR_Blade_CarbonPrint", mn, sz, relief=0.0, triplanar=False,
+                                  vals=(0.007, 0.026), roughs=(0.58, 0.48)),
         lambda mn, sz: mat_satin_steel("KR_Blade_SatinSteel", mn, sz, (cen.x, cen.y)),
         lambda mn, sz: mat_coat("KR_Blade_BlackCoat", mn, sz),
-    ], "blade")
+    ], "blade", sharp_deg=60.0)
 
     # --- ring ---------------------------------------------------------------------
     bm = bmesh.new()

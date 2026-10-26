@@ -12,6 +12,7 @@ Options:
     --no-bake        skip texture baking (faster, keeps procedural materials)
     --no-preview     skip preview videos
     --anims a,b,c    only these animations (catalog names)
+    --beauty         also render EEVEE showcase videos (<anim>_hq.mp4, slow)
     --placeholders   use placeholder knife models
     --out DIR        output root (default: repo root)
 """
@@ -227,6 +228,17 @@ def main():
             preview.render_action(rig, act, os.path.join(PREVIEWS, n), fps=30, every=2)
             shutil.rmtree(os.path.join(PREVIEWS, n + "_frames"), ignore_errors=True)
             print(f"[preview] {n}.mp4")
+    if opt("--beauty", False) and acts:
+        os.makedirs(PREVIEWS, exist_ok=True)
+        preview.setup_beauty(res=(640, 360), samples=12)
+        for o in bpy.data.objects:
+            if o.name.startswith("ENV_"):
+                o.hide_render = False
+        for n, (act, a) in acts.items():
+            scene.show_knife(groups, a.kind)
+            preview.render_action(rig, act, os.path.join(PREVIEWS, n + "_hq"), fps=30, every=2)
+            shutil.rmtree(os.path.join(PREVIEWS, n + "_hq_frames"), ignore_errors=True)
+            print(f"[beauty] {n}_hq.mp4")
     print("[build] done ->", ROOT)
 
 
