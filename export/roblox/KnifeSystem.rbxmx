@@ -878,9 +878,10 @@ KnifeViewmodel.__index = KnifeViewmodel
 local RENDER_NAME = "KnifeViewmodelStep"
 local instanceCount = 0
 
-function KnifeViewmodel.new(knife: string)
+function KnifeViewmodel.new(knife: string, skin: string?)
 	local self = setmetatable({}, KnifeViewmodel)
 	self.Knife = knife
+	self.Skin = skin -- e.g. "Lava" -> uses Knives.Karambit_Lava (built by SetupPacks)
 	self.Clips = Config.Clips[knife]
 	assert(self.Clips, "no clips configured for " .. tostring(knife))
 	self.State = "Unequipped"
@@ -906,12 +907,20 @@ function KnifeViewmodel:_setState(s: string)
 end
 
 function KnifeViewmodel:_build()
-	local template = KnifeSystem:WaitForChild("Knives"):WaitForChild(self.Knife)
+	local templateName = if self.Skin then self.Knife .. "_" .. self.Skin else self.Knife
+	local template = KnifeSystem:WaitForChild("Knives"):WaitForChild(templateName)
 	local character = Players.LocalPlayer.Character
 	local model = KnifeBuilder.BuildViewmodel(self.Knife, template, character)
 	model.Parent = Workspace.CurrentCamera
 	self.Model = model
 	self.Root = model.PrimaryPart
+	if self.Skin then
+		local packs = game:GetService("ReplicatedStorage"):FindFirstChild("PackSystem")
+		local vfx = packs and packs:FindFirstChild("SkinVFX")
+		if vfx then
+			require(vfx).Apply(model, { Scale = 0.6 })
+		end
+	end
 	self.Animator = KnifeAnimator.new(model)
 	self.Animator:LoadFolder(KnifeSystem:WaitForChild("Animations"):WaitForChild(self.Knife))
 	local cam = model:FindFirstChild("CameraBone", true)
