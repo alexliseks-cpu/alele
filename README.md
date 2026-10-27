@@ -128,3 +128,37 @@ LUAURUN=roblox/tests/luaurun/target/release/luaurun BPY_PYTHON=python roblox/tes
 * Проверить работу в самом Roblox Studio отсюда нельзя: формат `.rbxmx`, сборка рига и проигрыватель проверены офлайн-тестами, но сам импорт FBX и вид в игре проверь у себя (шаги выше).
 * Слоёная одежда (layered clothing) на руках не переносится во вьюмодель — только цвета тела и классическая рубашка.
 * Если у тебя нестандартный пакет тела (Rthro и т.п.), руки будут другой длины — суставы берутся из аватара, позы останутся правильными, но кисть может стоять чуть иначе на экране.
+
+---
+
+## Limited Packs: Lava Pack и Ice Pack
+
+Новые модели для паков в стиле премиальных скинов (вычурные плавники, золотая отделка, светящиеся элементы) и красивые стенды:
+
+| Пак | Предметы |
+|---|---|
+| **Lava Pack** | `Lava_AR` (автомат), `Lava_Deagle`, `Lava_Karambit` (скин керамбита), `Lava_Stand` (стенд) |
+| **Ice Pack** | `Ice_Sniper`, `Ice_Revolver`, `Ice_Butterfly` (скин бабочки), `Ice_Stand` (стенд) |
+
+**Эффекты в Roblox:**
+* Светящиеся трещины, руны и кристаллы — это `Neon`-детали, они пульсируют.
+* Лёд сделан полупрозрачными `Glass`-деталями.
+* Частицы и свет навешиваются на точки `VFX_*`: угли, дым, огонь, лавовые капли, иней, снег, искры, свет `HeatGlow`/`IceGlow` (модуль `PackSystem.SkinVFX`).
+* Непрозрачные детали получают запечённые PBR-текстуры (`SurfaceAppearance`).
+
+Превью-видео: `previews/packs/*.mp4`.
+
+### Установка паков
+
+1. `KnifeSystem.rbxmx` из основной инструкции должен уже стоять в ReplicatedStorage.
+2. ПКМ по `ReplicatedStorage` → *Insert from File…* → `export/packs/PackSystem.rbxmx`.
+3. 3D Importer: импортируй все 8 FBX из `export/packs/meshes/`.
+4. Вставь `export/packs/SetupPacks.lua` в Command Bar и нажми Enter. Скрипт:
+   * соберёт оружие в `ReplicatedStorage.PackSystem.Models.<Предмет>` (`PrimaryPart` = `Handle` в точке хвата, ствол смотрит по `LookVector`);
+   * соберёт скины ножей `KnifeSystem.Knives.Karambit_Lava` и `Butterfly_Ice`;
+   * поставит в Workspace папку `PackStands` с обоими стендами: оружие на них медленно крутится и парит, есть надписи LAVA PACK / ICE PACK и все эффекты;
+   * положит `PackStandsRuntime` в ServerScriptService.
+5. Скины ножей во вьюмодели: `KnifeViewmodel.new("Karambit", "Lava")`, `KnifeViewmodel.new("Butterfly", "Ice")` — анимации те же, эффекты включаются сами.
+6. Эффекты на своём оружии: `require(ReplicatedStorage.PackSystem.SkinVFX).Apply(model)`.
+
+Пересборка паков: `python blender/packs/export.py`. Модели описаны в `blender/packs/lava.py` и `blender/packs/ice.py`, контракт — в `blender/packs/CONTRACT.md`.
