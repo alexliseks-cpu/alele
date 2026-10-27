@@ -4,3 +4,4 @@ __pycache__/
 previews/*_frames/
 export/**/*_frames/
 .DS_Store
+previews/packs/_frames_*/
